@@ -5,3 +5,9 @@ repos:
   - source: https://github.com/qwibitai/nanoclaw.git
     targets:
       - https://git.gsingh.io/gurbakhshish/nanoclaw.git
+  - source: https://github.com/singh-gur/sikhibooks_ui.git
+    targets:
+      - https://git.gsingh.io/sikhibooks/ui.git
+  - source: https://github.com/singh-gur/opencode.git
+    targets:
+      - https://git.gsingh.io/gurbakhshish/oc_setup.git
