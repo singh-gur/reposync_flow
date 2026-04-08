@@ -80,6 +80,8 @@ Your worker runtime must provide:
 - pull access to `regv2.gsingh.io/personal/util_scripts`
 - an image pull secret named `regv2-secret` in the job namespace if the registry requires authentication
 
+The Kubernetes work pool should run the Prefect worker with a service account that has those permissions. This repo now matches `dbbackup_flow` by setting `work_pool.job_variables.service_account_name` to `prefect-worker` in `prefect.yaml`.
+
 The default flow parameters in `prefect.yaml` are:
 
 - `config_path`: `configs/repos.yaml`
