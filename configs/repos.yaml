@@ -2,3 +2,6 @@ repos:
   - source: https://github.com/ultraworkers/claw-code.git
     targets:
       - https://git.gsingh.io/gurbakhshish/claw-code.git
+  - source: https://github.com/qwibitai/nanoclaw.git
+    targets:
+      - https://git.gsingh.io/gurbakhshish/nanoclaw.git
