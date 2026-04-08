@@ -35,6 +35,7 @@ deployments:
       target_user_variable_name: "repo_mirror_target_user"
       target_token_block_name: "repo-mirror-target-token"
       service_account_name: "default"
+      image_pull_secret: "regv2-secret"
     work_pool:
       name: "kubernetes"
       work_queue_name: null

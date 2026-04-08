@@ -19,6 +19,7 @@ DEFAULT_CONFIG_PATH = "configs/repos.yaml"
 DEFAULT_JOB_NAMESPACE = "prefect"
 DEFAULT_MIRROR_IMAGE = "regv2.gsingh.io/personal/util_scripts"
 DEFAULT_SERVICE_ACCOUNT_NAME = "default"
+DEFAULT_IMAGE_PULL_SECRET = "regv2-secret"
 DEFAULT_TARGET_USER_VARIABLE_NAME = "repo_mirror_target_user"
 DEFAULT_TARGET_TOKEN_BLOCK_NAME = "repo-mirror-target-token"
 JOB_TIMEOUT_SECONDS = 1800
@@ -149,9 +150,27 @@ def _build_job_manifest(
     target_user: str,
     target_token: str,
     service_account_name: str,
+    image_pull_secret: str | None,
     ttl_seconds_after_finished: int,
 ) -> dict[str, Any]:
     """Build the Prefect Kubernetes Job manifest for a single mirror operation."""
+
+    pod_spec: dict[str, Any] = {
+        "restartPolicy": "Never",
+        "serviceAccountName": service_account_name,
+        "containers": [
+            {
+                "name": CONTAINER_NAME,
+                "image": mirror_image,
+                "command": ["/bin/sh", "-c"],
+                "args": [_build_command_string(source, target)],
+                "env": _build_env_vars(target_user, target_token),
+            }
+        ],
+    }
+
+    if image_pull_secret:
+        pod_spec["imagePullSecrets"] = [{"name": image_pull_secret}]
 
     return {
         "apiVersion": "batch/v1",
@@ -168,19 +187,7 @@ def _build_job_manifest(
             "backoffLimit": 0,
             "ttlSecondsAfterFinished": ttl_seconds_after_finished,
             "template": {
-                "spec": {
-                    "restartPolicy": "Never",
-                    "serviceAccountName": service_account_name,
-                    "containers": [
-                        {
-                            "name": CONTAINER_NAME,
-                            "image": mirror_image,
-                            "command": ["/bin/sh", "-c"],
-                            "args": [_build_command_string(source, target)],
-                            "env": _build_env_vars(target_user, target_token),
-                        }
-                    ],
-                }
+                "spec": pod_spec,
             },
         },
     }
@@ -195,6 +202,7 @@ def mirror_repository(
     target_user: str,
     target_token: str,
     service_account_name: str,
+    image_pull_secret: str | None = DEFAULT_IMAGE_PULL_SECRET,
     kubernetes_credentials: KubernetesCredentials | None = None,
     include_logs: bool = True,
     timeout_seconds: int = JOB_TIMEOUT_SECONDS,
@@ -213,6 +221,7 @@ def mirror_repository(
         target_user=target_user,
         target_token=target_token,
         service_account_name=service_account_name,
+        image_pull_secret=image_pull_secret,
         ttl_seconds_after_finished=ttl_seconds_after_finished,
     )
 
@@ -247,6 +256,7 @@ def run_flow(
     target_user_variable_name: str = DEFAULT_TARGET_USER_VARIABLE_NAME,
     target_token_block_name: str = DEFAULT_TARGET_TOKEN_BLOCK_NAME,
     service_account_name: str = DEFAULT_SERVICE_ACCOUNT_NAME,
+    image_pull_secret: str | None = DEFAULT_IMAGE_PULL_SECRET,
     kubernetes_credentials: KubernetesCredentials | None = None,
     include_logs: bool = True,
     timeout_seconds: int = JOB_TIMEOUT_SECONDS,
@@ -270,6 +280,7 @@ def run_flow(
                 target_user,
                 target_token,
                 service_account_name,
+                image_pull_secret,
                 kubernetes_credentials,
                 include_logs,
                 timeout_seconds,

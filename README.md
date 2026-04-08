@@ -78,6 +78,7 @@ Your worker runtime must provide:
 - RBAC that allows creating, reading, and deleting Jobs and reading Pod logs in the target namespace
 - access to the Prefect API so the flow can load the `repo_mirror_target_user` Variable and the `repo-mirror-target-token` Secret block
 - pull access to `regv2.gsingh.io/personal/util_scripts`
+- an image pull secret named `regv2-secret` in the job namespace if the registry requires authentication
 
 The default flow parameters in `prefect.yaml` are:
 
@@ -87,6 +88,7 @@ The default flow parameters in `prefect.yaml` are:
 - `target_user_variable_name`: `repo_mirror_target_user`
 - `target_token_block_name`: `repo-mirror-target-token`
 - `service_account_name`: `default`
+- `image_pull_secret`: `regv2-secret`
 
 Deploy the configured flow:
 
