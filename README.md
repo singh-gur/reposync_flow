@@ -31,6 +31,7 @@ This template is configured for a Kubernetes work pool by default.
 Before deploying, update these values if needed:
 
 - `prefect.yaml`: `work_pool.name`
+- `prefect.yaml`: `work_pool.job_variables.namespace`
 - `prefect.yaml`: `pull[0].prefect.deployments.steps.git_clone.repository`
 - `prefect.yaml`: schedule, timezone, deployment name, and any runtime parameters
 

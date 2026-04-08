@@ -3,7 +3,7 @@
 # control along with your flow code.
 
 name: "reposync_flow"
-prefect-version: 3.6.10
+prefect-version: 3.6.25
 
 build: null
 
@@ -14,10 +14,9 @@ pull:
       id: clone_step
       repository: "https://github.com/singh-gur/reposync_flow.git"
       branch: "main"
-  - prefect.deployments.steps.run_shell_script:
-      id: install_project_step
-      script: 'pip install "{{ clone_step.directory }}"'
-      stream_output: true
+  - prefect.deployments.steps.pip_install_requirements:
+      id: install_requirements_step
+      requirements_file: "{{ clone_step.directory }}/requirements.txt"
 
 deployments:
   - name: "reposync_flow"
@@ -34,5 +33,6 @@ deployments:
       name: "kubernetes"
       work_queue_name: null
       job_variables:
+        namespace: "prefect"
         packages:
           - "prefect-kubernetes>=0.7.2"

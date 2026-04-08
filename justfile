@@ -17,3 +17,7 @@ list-deployments:
 
 status:
     uv run prefect version && uv run prefect profile ls
+
+# Generate requirements.txt (top-level deps only, no transitive deps, no annotations)
+reqs:
+    uv pip compile pyproject.toml --no-deps --no-annotate --no-header > requirements.txt
