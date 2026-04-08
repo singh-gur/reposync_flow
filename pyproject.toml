@@ -1,0 +1,27 @@
+[project]
+name = "reposync_flow"
+version = "0.1.0"
+description = "Prefect flow that syncs git repos from github to local git server"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Gurbakhshish Singh" }]
+dependencies = [
+  "prefect>=3.6.10",
+  "prefect-kubernetes>=0.7.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "basedpyright>=1.37.1",
+  "ruff>=0.14.11",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.basedpyright]
+typeCheckingMode = "standard"

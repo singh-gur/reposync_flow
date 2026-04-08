@@ -1,0 +1,38 @@
+# Welcome to your prefect.yaml file! You can use this file for storing and managing
+# configuration for deploying your flows. We recommend committing this file to source
+# control along with your flow code.
+
+name: "reposync_flow"
+prefect-version: 3.6.10
+
+build: null
+
+push: null
+
+pull:
+  - prefect.deployments.steps.git_clone:
+      id: clone_step
+      repository: "https://github.com/singh-gur/reposync_flow.git"
+      branch: "main"
+  - prefect.deployments.steps.run_shell_script:
+      id: install_project_step
+      script: 'pip install "{{ clone_step.directory }}"'
+      stream_output: true
+
+deployments:
+  - name: "reposync_flow"
+    version: 0.1.0
+    tags: []
+    description: "Prefect flow that syncs git repos from github to local git server"
+    schedule:
+      cron: "0 2 * * *"
+      timezone: "America/New_York"
+    flow_name: "run_flow"
+    entrypoint: "reposync_flow/flows/example_flow.py:run_flow"
+    parameters: {}
+    work_pool:
+      name: "kubernetes"
+      work_queue_name: null
+      job_variables:
+        packages:
+          - "prefect-kubernetes>=0.7.2"
