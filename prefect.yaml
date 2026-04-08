@@ -36,6 +36,7 @@ deployments:
       target_token_block_name: "repo-mirror-target-token"
       service_account_name: "default"
       image_pull_secret: "regv2-secret"
+      max_concurrency: 5
     work_pool:
       name: "kubernetes"
       work_queue_name: null

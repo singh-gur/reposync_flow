@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import re
+import threading
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
 import yaml
 from prefect import flow, get_run_logger, task
+from prefect.futures import PrefectFuture
 from prefect.blocks.system import Secret
 from prefect.runtime import flow_run
-from prefect.utilities.asyncutils import run_coro_as_sync
 from prefect.variables import Variable
 from prefect_kubernetes.credentials import KubernetesCredentials
 from prefect_kubernetes.jobs import KubernetesJob, KubernetesJobRun
@@ -119,7 +120,7 @@ def _load_target_user(variable_name: str) -> str:
 def _load_target_token(block_name: str) -> str:
     """Load the shared target token from a Prefect Secret block."""
 
-    secret_block = cast(Secret[Any], run_coro_as_sync(Secret.aload(block_name)))
+    secret_block = cast(Secret[Any], Secret.load(block_name))
     target_token = secret_block.get()
     if not isinstance(target_token, str) or not target_token:
         raise ValueError(f"Prefect Secret block '{block_name}' must contain a non-empty string")
@@ -238,7 +239,7 @@ def mirror_repository(
         timeout_seconds=timeout_seconds,
     )
 
-    job_run = cast(KubernetesJobRun, run_coro_as_sync(job.atrigger()))
+    job_run = cast(KubernetesJobRun, job.trigger())
     job_run.wait_for_completion()
 
     logs = job_run.fetch_result() if include_logs else None
@@ -260,19 +261,55 @@ def run_flow(
     kubernetes_credentials: KubernetesCredentials | None = None,
     include_logs: bool = True,
     timeout_seconds: int = JOB_TIMEOUT_SECONDS,
+    max_concurrency: int = 5,
 ) -> dict[str, int | str]:
     """Mirror all configured repositories by launching one Kubernetes Job per target."""
 
     logger = get_run_logger()
+    if max_concurrency < 1:
+        raise ValueError("max_concurrency must be at least 1")
+
     repo_definitions = _load_repo_definitions(config_path)
     target_user = _load_target_user(target_user_variable_name)
     target_token = _load_target_token(target_token_block_name)
 
     mirrored_target_count = 0
+    in_flight_futures: list[PrefectFuture[None]] = []
+    completed_futures: list[PrefectFuture[None]] = []
+    completion_lock = threading.Lock()
+    completion_event = threading.Event()
+
+    def mark_completed(task_future: PrefectFuture[None]) -> None:
+        with completion_lock:
+            completed_futures.append(task_future)
+            completion_event.set()
+
+    def drain_completed(block: bool) -> None:
+        while in_flight_futures:
+            if block:
+                completion_event.wait()
+            with completion_lock:
+                ready_futures = completed_futures[:]
+                completed_futures.clear()
+                completion_event.clear()
+
+            if not ready_futures:
+                if block:
+                    continue
+                break
+
+            for completed_future in ready_futures:
+                if completed_future in in_flight_futures:
+                    in_flight_futures.remove(completed_future)
+                completed_future.result()
+
     for repo_definition in repo_definitions:
         source = repo_definition["source"]
         for target in repo_definition["targets"]:
-            mirror_repository(
+            while len(in_flight_futures) >= max_concurrency:
+                drain_completed(block=True)
+
+            task_future = mirror_repository.submit(
                 source,
                 target,
                 job_namespace,
@@ -285,7 +322,12 @@ def run_flow(
                 include_logs,
                 timeout_seconds,
             )
+            task_future.add_done_callback(mark_completed)
+            in_flight_futures.append(task_future)
             mirrored_target_count += 1
+            drain_completed(block=False)
+
+    drain_completed(block=True)
 
     logger.info(
         "Completed mirroring for %s repos across %s targets",

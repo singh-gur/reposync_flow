@@ -91,6 +91,7 @@ The default flow parameters in `prefect.yaml` are:
 - `target_token_block_name`: `repo-mirror-target-token`
 - `service_account_name`: `default`
 - `image_pull_secret`: `regv2-secret`
+- `max_concurrency`: `5`
 
 Deploy the configured flow:
 
