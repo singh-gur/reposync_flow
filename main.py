@@ -1,5 +1,5 @@
 """Prefect flow entry point."""
 
-from reposync_flow.flows.example_flow import run_flow
+from reposync_flow.flows.repo_mirror_flow import run_flow
 
 __all__ = ["run_flow"]

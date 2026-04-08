@@ -2035,6 +2035,7 @@ source = { editable = "." }
 dependencies = [
     { name = "prefect" },
     { name = "prefect-kubernetes" },
+    { name = "pyyaml" },
 ]
 
 [package.dev-dependencies]
@@ -2047,6 +2048,7 @@ dev = [
 requires-dist = [
     { name = "prefect", specifier = "==3.6.25" },
     { name = "prefect-kubernetes", specifier = ">=0.7.2" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
 ]
 
 [package.metadata.requires-dev]

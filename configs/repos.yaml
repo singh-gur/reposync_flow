@@ -1,0 +1,4 @@
+repos:
+  - source: https://github.com/some-user/some-repo.git
+    targets:
+      - https://git.gsingh.io/gurbakhshish/some-repo.git

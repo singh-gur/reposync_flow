@@ -1,13 +1,14 @@
 [project]
 name = "reposync_flow"
 version = "0.1.0"
-description = "Prefect flow that syncs git repos from github to local git server"
+description = "Prefect flow that mirrors git repositories by creating Kubernetes Jobs"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Gurbakhshish Singh" }]
 dependencies = [
   "prefect==3.6.25",
   "prefect-kubernetes>=0.7.2",
+  "PyYAML>=6.0.2",
 ]
 
 [build-system]
