@@ -1,4 +1,10 @@
-"""Prefect flow for mirroring repositories via Prefect Kubernetes Jobs."""
+"""Prefect flow for mirroring repositories via Prefect Kubernetes Jobs.
+
+This module turns a YAML file of source and target repository mappings into one
+Kubernetes Job per mirror operation. The flow resolves shared credentials from
+Prefect-managed configuration, submits mirror tasks through Prefect, and keeps a
+bounded number of Kubernetes Jobs in flight using rolling concurrency.
+"""
 
 from __future__ import annotations
 
@@ -29,14 +35,33 @@ CONTAINER_NAME = "repo-mirror"
 
 
 class RepoDefinition(TypedDict):
-    """Repository mirror configuration loaded from YAML."""
+    """Repository mirror configuration loaded from YAML.
+
+    Attributes:
+        source: Git remote URL used as the source of truth.
+        targets: One or more destination git remotes that should receive a
+            mirrored copy of the source repository.
+    """
 
     source: str
     targets: list[str]
 
 
 def _load_repo_definitions(config_path: str) -> list[RepoDefinition]:
-    """Load and validate repository mirror definitions from a YAML file."""
+    """Load and validate repository mirror definitions from a YAML file.
+
+    Args:
+        config_path: Path to the YAML file containing the top-level `repos`
+            list.
+
+    Returns:
+        A validated list of repository definitions ready for flow execution.
+
+    Raises:
+        FileNotFoundError: If the config file does not exist.
+        ValueError: If the YAML structure is missing required fields or has the
+            wrong types.
+    """
 
     config_file = Path(config_path)
     if not config_file.exists():
@@ -73,14 +98,23 @@ def _load_repo_definitions(config_path: str) -> list[RepoDefinition]:
 
 
 def _slugify(value: str) -> str:
-    """Convert a string into a Kubernetes-safe slug fragment."""
+    """Convert a string into a Kubernetes-safe slug fragment.
+
+    The resulting value is used as part of Job names, so it is constrained to
+    lowercase alphanumeric characters and hyphens.
+    """
 
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "repo"
 
 
 def _build_job_name(source: str, target: str) -> str:
-    """Build a deterministic Kubernetes Job name for a mirror operation."""
+    """Build a deterministic Kubernetes Job name for a mirror operation.
+
+    The name combines the source repo name, target repo name, and a short flow
+    run suffix. This keeps names stable within a run while avoiding collisions
+    across different flow runs.
+    """
 
     repo_name = target.rstrip("/").rsplit("/", maxsplit=1)[-1].removesuffix(".git")
     source_name = source.rstrip("/").rsplit("/", maxsplit=1)[-1].removesuffix(".git")
@@ -91,7 +125,12 @@ def _build_job_name(source: str, target: str) -> str:
 
 
 def _build_command_string(source: str, target: str) -> str:
-    """Build the shell command executed by the Kubernetes Job container."""
+    """Build the shell command executed by the Kubernetes Job container.
+
+    The command references `TARGET_USER` and `TARGET_TOKEN` through environment
+    variables so the credential values do not have to be embedded directly in
+    the CLI argument construction logic outside of the container spec.
+    """
 
     return " ".join(
         [
@@ -109,7 +148,19 @@ def _build_command_string(source: str, target: str) -> str:
 
 
 def _load_target_user(variable_name: str) -> str:
-    """Load the shared target username from a Prefect Variable."""
+    """Load the shared target username from a Prefect Variable.
+
+    Args:
+        variable_name: Name of the Prefect Variable expected to contain the
+            shared target username.
+
+    Returns:
+        The configured target username.
+
+    Raises:
+        ValueError: If the variable is missing or does not contain a non-empty
+            string.
+    """
 
     target_user = Variable.get(variable_name)
     if not isinstance(target_user, str) or not target_user:
@@ -118,7 +169,18 @@ def _load_target_user(variable_name: str) -> str:
 
 
 def _load_target_token(block_name: str) -> str:
-    """Load the shared target token from a Prefect Secret block."""
+    """Load the shared target token from a Prefect Secret block.
+
+    Args:
+        block_name: Name of the Prefect Secret block that stores the target
+            token.
+
+    Returns:
+        The resolved token value.
+
+    Raises:
+        ValueError: If the block does not resolve to a non-empty string.
+    """
 
     secret_block = cast(Secret[Any], Secret.load(block_name))
     target_token = secret_block.get()
@@ -128,7 +190,12 @@ def _load_target_token(block_name: str) -> str:
 
 
 def _build_env_vars(target_user: str, target_token: str) -> list[dict[str, Any]]:
-    """Build container env vars from Prefect-managed target credentials."""
+    """Build container env vars from Prefect-managed target credentials.
+
+    These values are injected into the Job container and referenced by the
+    mirror command. The values originate from Prefect configuration rather than
+    Kubernetes Secrets in this repo's current design.
+    """
 
     return [
         {
@@ -154,7 +221,23 @@ def _build_job_manifest(
     image_pull_secret: str | None,
     ttl_seconds_after_finished: int,
 ) -> dict[str, Any]:
-    """Build the Prefect Kubernetes Job manifest for a single mirror operation."""
+    """Build the Prefect Kubernetes Job manifest for a single mirror operation.
+
+    Args:
+        job_name: Kubernetes Job name to create.
+        namespace: Namespace where the Job should run.
+        mirror_image: Container image containing the `git_mirror_repo` utility.
+        source: Source git remote URL.
+        target: Destination git remote URL.
+        target_user: Shared target username resolved from Prefect.
+        target_token: Shared target token resolved from Prefect.
+        service_account_name: Service account used by the spawned Job pod.
+        image_pull_secret: Optional image pull secret for private registries.
+        ttl_seconds_after_finished: TTL applied to the finished Job.
+
+    Returns:
+        A Kubernetes Job manifest dictionary accepted by `KubernetesJob`.
+    """
 
     pod_spec: dict[str, Any] = {
         "restartPolicy": "Never",
@@ -209,7 +292,16 @@ def mirror_repository(
     timeout_seconds: int = JOB_TIMEOUT_SECONDS,
     ttl_seconds_after_finished: int = JOB_TTL_SECONDS,
 ) -> None:
-    """Run one repository mirror operation as a Prefect-managed Kubernetes Job."""
+    """Run one repository mirror operation as a Prefect-managed Kubernetes Job.
+
+    This task is the unit of parallelism for the flow. Each task creates a
+    single Kubernetes Job, waits for it to complete, and optionally emits pod
+    logs back into the Prefect task logs.
+
+    Raises:
+        RuntimeError: If the Kubernetes Job fails according to
+            `prefect_kubernetes`.
+    """
 
     logger = get_run_logger()
     job_name = _build_job_name(source, target)
@@ -263,7 +355,40 @@ def run_flow(
     timeout_seconds: int = JOB_TIMEOUT_SECONDS,
     max_concurrency: int = 5,
 ) -> dict[str, int | str]:
-    """Mirror all configured repositories by launching one Kubernetes Job per target."""
+    """Mirror all configured repositories using bounded rolling concurrency.
+
+    The flow submits one Prefect task per source/target pair. Each task in turn
+    creates a Kubernetes Job that runs the mirror image. Concurrency is bounded
+    by `max_concurrency`, but it is rolling rather than batched: as soon as one
+    in-flight mirror task finishes, the flow submits the next pending one. This
+    keeps up to `max_concurrency` Jobs active without waiting for an entire
+    batch to drain before scheduling more work.
+
+    Args:
+        config_path: Path to the YAML repo mapping file.
+        job_namespace: Namespace where mirror Jobs are created.
+        mirror_image: Container image that contains the mirror utility.
+        target_user_variable_name: Prefect Variable name for the shared target
+            username.
+        target_token_block_name: Prefect Secret block name for the shared
+            target token.
+        service_account_name: Service account used by each spawned mirror Job.
+        image_pull_secret: Optional image pull secret for the mirror image.
+        kubernetes_credentials: Prefect Kubernetes credentials block. If not
+            provided, in-cluster/default client behavior is used by
+            `prefect_kubernetes`.
+        include_logs: Whether to fetch and emit pod logs after Job completion.
+        timeout_seconds: Timeout passed to `KubernetesJob`.
+        max_concurrency: Maximum number of mirror tasks to keep in flight at
+            once. Must be at least 1.
+
+    Returns:
+        A summary containing the config path, number of repos, and number of
+        source/target mirror operations launched.
+
+    Raises:
+        ValueError: If `max_concurrency` is less than 1.
+    """
 
     logger = get_run_logger()
     if max_concurrency < 1:
@@ -280,11 +405,21 @@ def run_flow(
     completion_event = threading.Event()
 
     def mark_completed(task_future: PrefectFuture[None]) -> None:
+        """Queue a completed future so the scheduler can free a slot quickly."""
+
         with completion_lock:
             completed_futures.append(task_future)
             completion_event.set()
 
     def drain_completed(block: bool) -> None:
+        """Drain completed futures and surface any task failures.
+
+        Args:
+            block: When `True`, wait until at least one in-flight future
+                completes. When `False`, only process futures that have already
+                finished.
+        """
+
         while in_flight_futures:
             if block:
                 completion_event.wait()

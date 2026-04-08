@@ -61,6 +61,30 @@ Each repo entry has:
 - `source`: the source git remote to mirror from
 - `targets`: one or more destination remotes to mirror to
 
+## Concurrency
+
+The flow launches one Prefect task per `source -> target` pair, and each task
+creates one Kubernetes Job.
+
+Concurrency is controlled by the `max_concurrency` flow parameter.
+
+- Default: `5`
+- Meaning: at most 5 mirror tasks and therefore at most 5 Kubernetes Jobs are in flight at once
+- Behavior: rolling concurrency, not batch concurrency
+
+Rolling concurrency means the flow does not wait for an entire batch of jobs to
+finish before starting more. If `max_concurrency` is `5` and there are `7`
+mirror operations:
+
+1. The first 5 start immediately.
+2. As soon as any 1 completes, the 6th starts.
+3. As soon as another completes, the 7th starts.
+
+This keeps the pipeline full while still putting an upper bound on cluster load.
+
+Reduce `max_concurrency` if your worker, cluster, or git endpoints should be
+protected from too many simultaneous mirror operations.
+
 ## Deployments
 
 This project is configured for a Kubernetes work pool by default.
