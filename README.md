@@ -16,13 +16,16 @@ pipx install uv
 uv sync
 ```
 
-3. Create a Kubernetes Secret in the target namespace with the shared target credentials used by the mirror utility:
+3. Create the shared target credentials in Prefect:
 
 ```bash
-kubectl create secret generic repo-mirror-target-auth \
-  --from-literal=TARGET_USER=username \
-  --from-literal=TARGET_TOKEN=pat-token-here \
-  --namespace prefect
+prefect variable set repo_mirror_target_user username
+```
+
+```python
+from prefect.blocks.system import Secret
+
+Secret(value="pat-token-here").save("repo-mirror-target-token", overwrite=True)
 ```
 
 4. Run the flow locally:
@@ -73,7 +76,7 @@ Your worker runtime must provide:
 
 - in-cluster Kubernetes API access
 - RBAC that allows creating, reading, and deleting Jobs and reading Pod logs in the target namespace
-- a Kubernetes Secret named `repo-mirror-target-auth` with `TARGET_USER` and `TARGET_TOKEN` keys
+- access to the Prefect API so the flow can load the `repo_mirror_target_user` Variable and the `repo-mirror-target-token` Secret block
 - pull access to `regv2.gsingh.io/personal/util_scripts`
 
 The default flow parameters in `prefect.yaml` are:
@@ -81,7 +84,8 @@ The default flow parameters in `prefect.yaml` are:
 - `config_path`: `configs/repos.yaml`
 - `job_namespace`: `prefect`
 - `mirror_image`: `regv2.gsingh.io/personal/util_scripts`
-- `target_secret_name`: `repo-mirror-target-auth`
+- `target_user_variable_name`: `repo_mirror_target_user`
+- `target_token_block_name`: `repo-mirror-target-token`
 - `service_account_name`: `default`
 
 Deploy the configured flow:

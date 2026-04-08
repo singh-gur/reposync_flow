@@ -32,7 +32,8 @@ deployments:
       config_path: "configs/repos.yaml"
       job_namespace: "prefect"
       mirror_image: "regv2.gsingh.io/personal/util_scripts"
-      target_secret_name: "repo-mirror-target-auth"
+      target_user_variable_name: "repo_mirror_target_user"
+      target_token_block_name: "repo-mirror-target-token"
       service_account_name: "default"
     work_pool:
       name: "kubernetes"

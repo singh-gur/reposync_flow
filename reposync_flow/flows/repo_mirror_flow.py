@@ -8,16 +8,19 @@ from typing import Any, TypedDict, cast
 
 import yaml
 from prefect import flow, get_run_logger, task
+from prefect.blocks.system import Secret
 from prefect.runtime import flow_run
 from prefect.utilities.asyncutils import run_coro_as_sync
+from prefect.variables import Variable
 from prefect_kubernetes.credentials import KubernetesCredentials
 from prefect_kubernetes.jobs import KubernetesJob, KubernetesJobRun
 
 DEFAULT_CONFIG_PATH = "configs/repos.yaml"
 DEFAULT_JOB_NAMESPACE = "prefect"
 DEFAULT_MIRROR_IMAGE = "regv2.gsingh.io/personal/util_scripts"
-DEFAULT_TARGET_SECRET_NAME = "repo-mirror-target-auth"
 DEFAULT_SERVICE_ACCOUNT_NAME = "default"
+DEFAULT_TARGET_USER_VARIABLE_NAME = "repo_mirror_target_user"
+DEFAULT_TARGET_TOKEN_BLOCK_NAME = "repo-mirror-target-token"
 JOB_TIMEOUT_SECONDS = 1800
 JOB_TTL_SECONDS = 300
 CONTAINER_NAME = "repo-mirror"
@@ -103,27 +106,36 @@ def _build_command_string(source: str, target: str) -> str:
     )
 
 
-def _build_env_vars(target_secret_name: str) -> list[dict[str, Any]]:
-    """Build container env vars backed by the target auth Kubernetes Secret."""
+def _load_target_user(variable_name: str) -> str:
+    """Load the shared target username from a Prefect Variable."""
+
+    target_user = Variable.get(variable_name)
+    if not isinstance(target_user, str) or not target_user:
+        raise ValueError(f"Prefect Variable '{variable_name}' must contain a non-empty string")
+    return target_user
+
+
+def _load_target_token(block_name: str) -> str:
+    """Load the shared target token from a Prefect Secret block."""
+
+    secret_block = cast(Secret[Any], run_coro_as_sync(Secret.aload(block_name)))
+    target_token = secret_block.get()
+    if not isinstance(target_token, str) or not target_token:
+        raise ValueError(f"Prefect Secret block '{block_name}' must contain a non-empty string")
+    return target_token
+
+
+def _build_env_vars(target_user: str, target_token: str) -> list[dict[str, Any]]:
+    """Build container env vars from Prefect-managed target credentials."""
 
     return [
         {
             "name": "TARGET_USER",
-            "valueFrom": {
-                "secretKeyRef": {
-                    "name": target_secret_name,
-                    "key": "TARGET_USER",
-                }
-            },
+            "value": target_user,
         },
         {
             "name": "TARGET_TOKEN",
-            "valueFrom": {
-                "secretKeyRef": {
-                    "name": target_secret_name,
-                    "key": "TARGET_TOKEN",
-                }
-            },
+            "value": target_token,
         },
     ]
 
@@ -134,7 +146,8 @@ def _build_job_manifest(
     mirror_image: str,
     source: str,
     target: str,
-    target_secret_name: str,
+    target_user: str,
+    target_token: str,
     service_account_name: str,
     ttl_seconds_after_finished: int,
 ) -> dict[str, Any]:
@@ -164,7 +177,7 @@ def _build_job_manifest(
                             "image": mirror_image,
                             "command": ["/bin/sh", "-c"],
                             "args": [_build_command_string(source, target)],
-                            "env": _build_env_vars(target_secret_name),
+                            "env": _build_env_vars(target_user, target_token),
                         }
                     ],
                 }
@@ -179,7 +192,8 @@ def mirror_repository(
     target: str,
     job_namespace: str,
     mirror_image: str,
-    target_secret_name: str,
+    target_user: str,
+    target_token: str,
     service_account_name: str,
     kubernetes_credentials: KubernetesCredentials | None = None,
     include_logs: bool = True,
@@ -196,7 +210,8 @@ def mirror_repository(
         mirror_image=mirror_image,
         source=source,
         target=target,
-        target_secret_name=target_secret_name,
+        target_user=target_user,
+        target_token=target_token,
         service_account_name=service_account_name,
         ttl_seconds_after_finished=ttl_seconds_after_finished,
     )
@@ -229,7 +244,8 @@ def run_flow(
     config_path: str = DEFAULT_CONFIG_PATH,
     job_namespace: str = DEFAULT_JOB_NAMESPACE,
     mirror_image: str = DEFAULT_MIRROR_IMAGE,
-    target_secret_name: str = DEFAULT_TARGET_SECRET_NAME,
+    target_user_variable_name: str = DEFAULT_TARGET_USER_VARIABLE_NAME,
+    target_token_block_name: str = DEFAULT_TARGET_TOKEN_BLOCK_NAME,
     service_account_name: str = DEFAULT_SERVICE_ACCOUNT_NAME,
     kubernetes_credentials: KubernetesCredentials | None = None,
     include_logs: bool = True,
@@ -239,6 +255,8 @@ def run_flow(
 
     logger = get_run_logger()
     repo_definitions = _load_repo_definitions(config_path)
+    target_user = _load_target_user(target_user_variable_name)
+    target_token = _load_target_token(target_token_block_name)
 
     mirrored_target_count = 0
     for repo_definition in repo_definitions:
@@ -249,7 +267,8 @@ def run_flow(
                 target,
                 job_namespace,
                 mirror_image,
-                target_secret_name,
+                target_user,
+                target_token,
                 service_account_name,
                 kubernetes_credentials,
                 include_logs,
