@@ -239,13 +239,13 @@ def mirror_repository(
     )
 
     job_run = cast(KubernetesJobRun, run_coro_as_sync(job.atrigger()))
-    completed = job_run.wait_for_completion()
-    if not completed:
-        raise RuntimeError(f"Kubernetes Job did not complete successfully: {job_name}")
+    job_run.wait_for_completion()
 
     logs = job_run.fetch_result() if include_logs else None
     if logs:
         logger.info("Kubernetes Job logs for %s:\n%s", job_name, logs)
+
+    logger.info("Kubernetes Job %s completed successfully", job_name)
 
 
 @flow(name="repo_mirror_flow", log_prints=True)
