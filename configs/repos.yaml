@@ -1,4 +1,4 @@
 repos:
-  - source: https://github.com/some-user/some-repo.git
+  - source: https://github.com/ultraworkers/claw-code.git
     targets:
-      - https://git.gsingh.io/gurbakhshish/some-repo.git
+      - https://git.gsingh.io/gurbakhshish/claw-code.git
