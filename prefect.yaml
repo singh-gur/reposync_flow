@@ -24,7 +24,7 @@ deployments:
     tags: []
     description: "Prefect flow that mirrors repositories by creating Kubernetes Jobs from YAML configuration"
     schedule:
-      cron: "0 2 * * *"
+      cron: "0 */6 * * *"
       timezone: "America/New_York"
     flow_name: "repo_mirror_flow"
     entrypoint: "reposync_flow/flows/repo_mirror_flow.py:run_flow"
