@@ -108,6 +108,18 @@ def _slugify(value: str) -> str:
     return slug or "repo"
 
 
+def _repo_name_from_remote(remote_url: str) -> str:
+    """Extract a repository name from a git remote URL."""
+
+    return remote_url.rstrip("/").rsplit("/", maxsplit=1)[-1].removesuffix(".git")
+
+
+def _build_task_run_name(target: str) -> str:
+    """Build a deterministic Prefect task run name for a mirror operation."""
+
+    return f"repo_{_slugify(_repo_name_from_remote(target)).replace('-', '_')}"
+
+
 def _build_job_name(source: str, target: str) -> str:
     """Build a deterministic Kubernetes Job name for a mirror operation.
 
@@ -116,8 +128,8 @@ def _build_job_name(source: str, target: str) -> str:
     across different flow runs.
     """
 
-    repo_name = target.rstrip("/").rsplit("/", maxsplit=1)[-1].removesuffix(".git")
-    source_name = source.rstrip("/").rsplit("/", maxsplit=1)[-1].removesuffix(".git")
+    repo_name = _repo_name_from_remote(target)
+    source_name = _repo_name_from_remote(source)
     flow_run_id = flow_run.id or "manual"
     run_suffix = _slugify(flow_run_id)[:8]
     base_name = f"repo-mirror-{_slugify(source_name)}-{_slugify(repo_name)}-{run_suffix}"
@@ -277,10 +289,11 @@ def _build_job_manifest(
     }
 
 
-@task
+@task(task_run_name="repo_{repo_task_name}")
 def mirror_repository(
     source: str,
     target: str,
+    repo_task_name: str,
     job_namespace: str,
     mirror_image: str,
     target_user: str,
@@ -447,6 +460,7 @@ def run_flow(
             task_future = mirror_repository.submit(
                 source,
                 target,
+                _build_task_run_name(target).removeprefix("repo_"),
                 job_namespace,
                 mirror_image,
                 target_user,
