@@ -36,6 +36,9 @@ deployments:
       target_token_block_name: "repo-mirror-target-token"
       service_account_name: "default"
       image_pull_secret: "regv2-secret"
+      source_ssh_secret_name: "repo-mirror-github-ssh"
+      source_ssh_secret_key: "id_ed25519"
+      source_ssh_key_path: "/var/run/repo-mirror-ssh/id_ed25519"
       max_concurrency: 5
     work_pool:
       name: "kubernetes"

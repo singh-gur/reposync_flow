@@ -7,7 +7,10 @@ repos:
       - https://git.gsingh.io/gh_mirror/nanoclaw.git
   - source: https://github.com/singh-gur/opencode.git
     targets:
-      - https://git.gsingh.io/gh_mirror/oc_setup.git
+      - https://git.gsingh.io/gurbakhshish/oc_setup.git
   - source: https://github.com/singh-gur/pi_setup.git
     targets:
-      - https://git.gsingh.io/gh_mirror/pi_setup.git
+      - https://git.gsingh.io/gurbakhshish/pi_setup.git
+  - source: git@github.com:singh-gur/smart_invest.git
+    targets:
+      - https://git.gsingh.io/gurbakhshish/smart_invest.git

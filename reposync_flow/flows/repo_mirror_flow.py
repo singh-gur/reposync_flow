@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 import threading
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, TypedDict, cast
 
 import yaml
@@ -29,6 +29,9 @@ DEFAULT_SERVICE_ACCOUNT_NAME = "default"
 DEFAULT_IMAGE_PULL_SECRET = "regv2-secret"
 DEFAULT_TARGET_USER_VARIABLE_NAME = "repo_mirror_target_user"
 DEFAULT_TARGET_TOKEN_BLOCK_NAME = "repo-mirror-target-token"
+DEFAULT_SOURCE_SSH_SECRET_NAME = "repo-mirror-github-ssh"
+DEFAULT_SOURCE_SSH_SECRET_KEY = "id_ed25519"
+DEFAULT_SOURCE_SSH_KEY_PATH = "/var/run/repo-mirror-ssh/id_ed25519"
 JOB_TIMEOUT_SECONDS = 1800
 JOB_TTL_SECONDS = 300
 CONTAINER_NAME = "repo-mirror"
@@ -136,7 +139,7 @@ def _build_job_name(source: str, target: str) -> str:
     return base_name[:63].rstrip("-")
 
 
-def _build_command_string(source: str, target: str) -> str:
+def _build_command_string(source: str, target: str, source_ssh_key_path: str | None) -> str:
     """Build the shell command executed by the Kubernetes Job container.
 
     The command references `TARGET_USER` and `TARGET_TOKEN` through environment
@@ -156,6 +159,7 @@ def _build_command_string(source: str, target: str) -> str:
             "--target-token",
             '"$TARGET_TOKEN"',
         ]
+        + (["--ssh-key", f'"{source_ssh_key_path}"'] if source_ssh_key_path else [])
     )
 
 
@@ -231,6 +235,9 @@ def _build_job_manifest(
     target_token: str,
     service_account_name: str,
     image_pull_secret: str | None,
+    source_ssh_secret_name: str | None,
+    source_ssh_secret_key: str,
+    source_ssh_key_path: str | None,
     ttl_seconds_after_finished: int,
 ) -> dict[str, Any]:
     """Build the Prefect Kubernetes Job manifest for a single mirror operation.
@@ -245,25 +252,57 @@ def _build_job_manifest(
         target_token: Shared target token resolved from Prefect.
         service_account_name: Service account used by the spawned Job pod.
         image_pull_secret: Optional image pull secret for private registries.
+        source_ssh_secret_name: Optional Kubernetes Secret containing a source
+            SSH private key.
+        source_ssh_secret_key: Secret data key containing the SSH private key.
+        source_ssh_key_path: Container path where the SSH key is mounted and
+            passed to `git_mirror_repo`.
         ttl_seconds_after_finished: TTL applied to the finished Job.
 
     Returns:
         A Kubernetes Job manifest dictionary accepted by `KubernetesJob`.
     """
 
+    effective_ssh_key_path = source_ssh_key_path if source_ssh_secret_name else None
+    container_spec: dict[str, Any] = {
+        "name": CONTAINER_NAME,
+        "image": mirror_image,
+        "command": ["/bin/sh", "-c"],
+        "args": [_build_command_string(source, target, effective_ssh_key_path)],
+        "env": _build_env_vars(target_user, target_token),
+    }
+
     pod_spec: dict[str, Any] = {
         "restartPolicy": "Never",
         "serviceAccountName": service_account_name,
-        "containers": [
-            {
-                "name": CONTAINER_NAME,
-                "image": mirror_image,
-                "command": ["/bin/sh", "-c"],
-                "args": [_build_command_string(source, target)],
-                "env": _build_env_vars(target_user, target_token),
-            }
-        ],
+        "containers": [container_spec],
     }
+
+    if source_ssh_secret_name and effective_ssh_key_path:
+        ssh_key_path = PurePosixPath(effective_ssh_key_path)
+        ssh_volume_name = "source-ssh-key"
+        pod_spec["volumes"] = [
+            {
+                "name": ssh_volume_name,
+                "secret": {
+                    "secretName": source_ssh_secret_name,
+                    "defaultMode": 0o400,
+                    "items": [
+                        {
+                            "key": source_ssh_secret_key,
+                            "path": ssh_key_path.name,
+                        }
+                    ],
+                },
+            }
+        ]
+        container_spec["volumeMounts"] = [
+            {
+                "name": ssh_volume_name,
+                "mountPath": str(ssh_key_path.parent),
+                "readOnly": True,
+            }
+        ]
 
     if image_pull_secret:
         pod_spec["imagePullSecrets"] = [{"name": image_pull_secret}]
@@ -300,6 +339,9 @@ def mirror_repository(
     target_token: str,
     service_account_name: str,
     image_pull_secret: str | None = DEFAULT_IMAGE_PULL_SECRET,
+    source_ssh_secret_name: str | None = DEFAULT_SOURCE_SSH_SECRET_NAME,
+    source_ssh_secret_key: str = DEFAULT_SOURCE_SSH_SECRET_KEY,
+    source_ssh_key_path: str | None = DEFAULT_SOURCE_SSH_KEY_PATH,
     kubernetes_credentials: KubernetesCredentials | None = None,
     include_logs: bool = True,
     timeout_seconds: int = JOB_TIMEOUT_SECONDS,
@@ -328,6 +370,9 @@ def mirror_repository(
         target_token=target_token,
         service_account_name=service_account_name,
         image_pull_secret=image_pull_secret,
+        source_ssh_secret_name=source_ssh_secret_name,
+        source_ssh_secret_key=source_ssh_secret_key,
+        source_ssh_key_path=source_ssh_key_path,
         ttl_seconds_after_finished=ttl_seconds_after_finished,
     )
 
@@ -363,6 +408,9 @@ def run_flow(
     target_token_block_name: str = DEFAULT_TARGET_TOKEN_BLOCK_NAME,
     service_account_name: str = DEFAULT_SERVICE_ACCOUNT_NAME,
     image_pull_secret: str | None = DEFAULT_IMAGE_PULL_SECRET,
+    source_ssh_secret_name: str | None = DEFAULT_SOURCE_SSH_SECRET_NAME,
+    source_ssh_secret_key: str = DEFAULT_SOURCE_SSH_SECRET_KEY,
+    source_ssh_key_path: str | None = DEFAULT_SOURCE_SSH_KEY_PATH,
     kubernetes_credentials: KubernetesCredentials | None = None,
     include_logs: bool = True,
     timeout_seconds: int = JOB_TIMEOUT_SECONDS,
@@ -387,6 +435,11 @@ def run_flow(
             target token.
         service_account_name: Service account used by each spawned mirror Job.
         image_pull_secret: Optional image pull secret for the mirror image.
+        source_ssh_secret_name: Optional Kubernetes Secret containing a source
+            SSH private key. Set to `None` to disable SSH key mounting.
+        source_ssh_secret_key: Secret data key containing the SSH private key.
+        source_ssh_key_path: Container path where the SSH key is mounted and
+            passed to `git_mirror_repo`.
         kubernetes_credentials: Prefect Kubernetes credentials block. If not
             provided, in-cluster/default client behavior is used by
             `prefect_kubernetes`.
@@ -467,6 +520,9 @@ def run_flow(
                 target_token,
                 service_account_name,
                 image_pull_secret,
+                source_ssh_secret_name,
+                source_ssh_secret_key,
+                source_ssh_key_path,
                 kubernetes_credentials,
                 include_logs,
                 timeout_seconds,

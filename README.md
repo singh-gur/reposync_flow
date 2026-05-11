@@ -103,6 +103,7 @@ Your worker runtime must provide:
 - access to the Prefect API so the flow can load the `repo_mirror_target_user` Variable and the `repo-mirror-target-token` Secret block
 - pull access to `regv2.gsingh.io/personal/util_scripts`
 - an image pull secret named `regv2-secret` in the job namespace if the registry requires authentication
+- a source SSH key secret named `repo-mirror-github-ssh` with key `id_ed25519` if mirroring private SSH sources
 
 The Kubernetes work pool should run the Prefect worker with a service account that has those permissions. This repo now matches `dbbackup_flow` by setting `work_pool.job_variables.service_account_name` to `prefect-worker` in `prefect.yaml`.
 
@@ -115,6 +116,9 @@ The default flow parameters in `prefect.yaml` are:
 - `target_token_block_name`: `repo-mirror-target-token`
 - `service_account_name`: `default`
 - `image_pull_secret`: `regv2-secret`
+- `source_ssh_secret_name`: `repo-mirror-github-ssh`
+- `source_ssh_secret_key`: `id_ed25519`
+- `source_ssh_key_path`: `/var/run/repo-mirror-ssh/id_ed25519`
 - `max_concurrency`: `5`
 
 Deploy the configured flow:
