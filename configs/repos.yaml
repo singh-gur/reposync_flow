@@ -1,16 +1,21 @@
 repos:
   - source: https://github.com/ultraworkers/claw-code.git
+    enabled: false
     targets:
       - https://git.gsingh.io/gh_mirror/claw-code.git
   - source: https://github.com/qwibitai/nanoclaw.git
+    enabled: false
     targets:
       - https://git.gsingh.io/gh_mirror/nanoclaw.git
   - source: https://github.com/singh-gur/opencode.git
+    enabled: true
     targets:
       - https://git.gsingh.io/gurbakhshish/oc_setup.git
   - source: https://github.com/singh-gur/pi_setup.git
+    enabled: true
     targets:
       - https://git.gsingh.io/gurbakhshish/pi_setup.git
   - source: git@github.com:singh-gur/smart_invest.git
+    enabled: true
     targets:
       - https://git.gsingh.io/gurbakhshish/smart_invest.git

@@ -51,14 +51,20 @@ The default config path is `configs/repos.yaml`.
 ```yaml
 repos:
   - source: https://github.com/some-user/some-repo.git
+    enabled: true
     targets:
       - https://git.gsingh.io/gurbakhshish/some-repo.git
       - https://git.gsingh.io/team/some-repo.git
+  - source: https://github.com/some-user/paused-repo.git
+    enabled: false
+    targets:
+      - https://git.gsingh.io/gurbakhshish/paused-repo.git
 ```
 
 Each repo entry has:
 
 - `source`: the source git remote to mirror from
+- `enabled`: optional boolean flag for the source; defaults to `true`. Set to `false` to skip mirroring without removing the entry.
 - `targets`: one or more destination remotes to mirror to
 
 ## Concurrency

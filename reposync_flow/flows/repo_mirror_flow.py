@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 import threading
 from pathlib import Path, PurePosixPath
-from typing import Any, TypedDict, cast
+from typing import Any, NotRequired, TypedDict, cast
 
 import yaml
 from prefect import flow, get_run_logger, task
@@ -44,10 +44,13 @@ class RepoDefinition(TypedDict):
         source: Git remote URL used as the source of truth.
         targets: One or more destination git remotes that should receive a
             mirrored copy of the source repository.
+        enabled: Optional flag that controls whether this source should be
+            mirrored. Missing values default to enabled.
     """
 
     source: str
     targets: list[str]
+    enabled: NotRequired[bool]
 
 
 def _load_repo_definitions(config_path: str) -> list[RepoDefinition]:
@@ -87,6 +90,7 @@ def _load_repo_definitions(config_path: str) -> list[RepoDefinition]:
 
         source = raw_repo.get("source")
         targets = raw_repo.get("targets")
+        enabled = raw_repo.get("enabled", True)
 
         if not isinstance(source, str) or not source:
             raise ValueError(f"Repo entry {index} must include a non-empty 'source' string")
@@ -94,8 +98,13 @@ def _load_repo_definitions(config_path: str) -> list[RepoDefinition]:
             raise ValueError(f"Repo entry {index} must include a non-empty 'targets' list")
         if any(not isinstance(target, str) or not target for target in targets):
             raise ValueError(f"Repo entry {index} has an invalid target URL")
+        if not isinstance(enabled, bool):
+            raise ValueError(f"Repo entry {index} 'enabled' value must be a boolean")
 
-        repo_definitions.append({"source": source, "targets": targets})
+        repo_definition: RepoDefinition = {"source": source, "targets": targets}
+        if not enabled:
+            repo_definition["enabled"] = False
+        repo_definitions.append(repo_definition)
 
     return repo_definitions
 
@@ -461,6 +470,25 @@ def run_flow(
         raise ValueError("max_concurrency must be at least 1")
 
     repo_definitions = _load_repo_definitions(config_path)
+    enabled_repo_definitions = [
+        repo_definition
+        for repo_definition in repo_definitions
+        if repo_definition.get("enabled", True)
+    ]
+    skipped_repo_count = len(repo_definitions) - len(enabled_repo_definitions)
+
+    if skipped_repo_count:
+        logger.info("Skipping %s disabled repo source(s)", skipped_repo_count)
+
+    if not enabled_repo_definitions:
+        logger.info("No enabled repo sources configured; nothing to mirror")
+        return {
+            "config_path": config_path,
+            "repo_count": 0,
+            "skipped_repo_count": skipped_repo_count,
+            "target_count": 0,
+        }
+
     target_user = _load_target_user(target_user_variable_name)
     target_token = _load_target_token(target_token_block_name)
 
@@ -504,7 +532,7 @@ def run_flow(
                     in_flight_futures.remove(completed_future)
                 completed_future.result()
 
-    for repo_definition in repo_definitions:
+    for repo_definition in enabled_repo_definitions:
         source = repo_definition["source"]
         for target in repo_definition["targets"]:
             while len(in_flight_futures) >= max_concurrency:
@@ -536,12 +564,13 @@ def run_flow(
 
     logger.info(
         "Completed mirroring for %s repos across %s targets",
-        len(repo_definitions),
+        len(enabled_repo_definitions),
         mirrored_target_count,
     )
 
     return {
         "config_path": config_path,
-        "repo_count": len(repo_definitions),
+        "repo_count": len(enabled_repo_definitions),
+        "skipped_repo_count": skipped_repo_count,
         "target_count": mirrored_target_count,
     }
