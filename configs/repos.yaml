@@ -16,6 +16,6 @@ repos:
     targets:
       - https://git.gsingh.io/gurbakhshish/pi_setup.git
   - source: git@github.com:singh-gur/smart_invest.git
-    enabled: true
+    enabled: false
     targets:
       - https://git.gsingh.io/gurbakhshish/smart_invest.git
