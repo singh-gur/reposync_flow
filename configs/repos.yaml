@@ -23,3 +23,7 @@ repos:
     enabled: true
     targets:
       - https://git.gsingh.io/gurbakhshish/util_scripts.git
+  - source: git@github.com:singh-gur/agent_skills.git
+    enabled: true
+    targets:
+      - https://git.gsingh.io/gurbakhshish/agent_skills.git
