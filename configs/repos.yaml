@@ -19,3 +19,7 @@ repos:
     enabled: false
     targets:
       - https://git.gsingh.io/gurbakhshish/smart_invest.git
+  - source: git@github.com:singh-gur/util_scripts.git
+    enabled: true
+    targets:
+      - https://git.gsingh.io/gurbakhshish/util_scripts.git
