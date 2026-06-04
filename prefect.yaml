@@ -45,6 +45,9 @@ deployments:
       work_queue_name: null
       job_variables:
         namespace: "prefect"
+        image: "prefecthq/prefect:3.6.25-python3.12"
+        finished_job_ttl: 3600
         packages:
+          - "importlib-metadata==9.0.0"
           - "prefect-kubernetes>=0.7.2"
         service_account_name: "prefect-worker"
