@@ -1,5 +1,8 @@
 # Prefect project commands
 
+default:
+    @just --list
+
 install:
     uv sync
 
