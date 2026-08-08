@@ -27,3 +27,7 @@ repos:
     enabled: true
     targets:
       - https://git.gsingh.io/gurbakhshish/agent_skills.git
+  - source: git@github.com:singh-gur/opnsense_backup_107.git
+    enabled: true
+    targets:
+      - https://git.gsingh.io/gurbakhshish/opnsense_backup.git
