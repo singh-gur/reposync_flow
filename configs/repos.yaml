@@ -31,3 +31,7 @@ repos:
     enabled: true
     targets:
       - https://git.gsingh.io/gurbakhshish/opnsense_backup.git
+  - source: git@github.com:singh-gur/claude_setup.git
+    enabled: true
+    targets:
+      - https://git.gsingh.io/gurbakhshish/claude_setup.git
