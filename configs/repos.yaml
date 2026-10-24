@@ -35,3 +35,7 @@ repos:
     enabled: true
     targets:
       - https://git.gsingh.io/gurbakhshish/claude_setup.git
+  - source: https://github.com/deepseek-ai/DeepInfer.git
+    enabled: true
+    targets:
+      - https://git.gsingh.io/gh_mirror/DeepInfer.git
